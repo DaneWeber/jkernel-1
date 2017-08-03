@@ -46,7 +46,7 @@ class JKernel(Kernel):
 
    # Basic kernel setup
    implementation         = 'jkernel'
-   implementation_version = '2.2.3'
+   implementation_version = '2.3.0'
    language_info          = {
       'mimetype':       'text/x-J',
       'name':           'J',
@@ -55,7 +55,7 @@ class JKernel(Kernel):
    banner                 = 'J Programming Language Kernel'
    help_links             = [
       {'text': 'Vocabulary', 'url': 'http://www.jsoftware.com/help/dictionary/vocabul.htm'},
-      {'text': 'NuVoc',      'url': 'http://www.jsoftware.com/jwiki/NuVoc'}
+      {'text': 'NuVoc',      'url': 'http://code.jsoftware.com/wiki/NuVoc'}
    ]
 
    # Constructor
@@ -71,19 +71,14 @@ class JKernel(Kernel):
       # Global variables
       global canvasnum
 
+      # Debug output
+      #self.log.error('*** do_execute')
+
       # Initialization
       output = ''
 
       # Split cell into single lines
       lines = code.splitlines()
-
-      # Pass input to J (old version)
-      """
-      for line in lines:
-         status = self.J.Exec(line)
-         # Receive output from J
-         output = self.J.Recv()
-      """
 
       # Pass input to J (new version)
       # Multi-line statements (like verb definitions) are now possible
@@ -91,13 +86,17 @@ class JKernel(Kernel):
       lines = [line for line in lines if line.strip() != '']
       lastline = ''
       if len(lines) > 0:
+         # Check last line (end of multiline statement)
          if not lines[-1].strip() == ')':
             lastline = lines[-1]
             del lines[-1]
             code = '\n'.join(lines)
+      # Prepare code
       code = code.replace('\'','\'\'')
+      # Execute code
       self.J.Exec('input_qjide_ =: \'' + code + '\'')
       self.J.Exec('0!:110 input_qjide_')
+      # Process last line (receive output)
       if lastline.strip() != '':
          self.J.Exec(lastline)
          output = self.J.Recv()
@@ -115,11 +114,12 @@ class JKernel(Kernel):
                try:
 
                   # Is it an image output ?
-                  prefix = '<!-- j html output a --><img src="~temp/'
+                  prefix = '<!-- j html output a --><img'
                   if output.startswith(prefix):
 
                      # Extract image name
-                     imgnam = output[len(prefix):]
+                     stapos = output.find('src=')
+                     imgnam = output[stapos+11:]
                      endpos = imgnam.find('?')
                      imgnam = imgnam[:endpos]
                      imgnam = os.path.join(qjide.JUsrFol,'temp',imgnam)
@@ -136,6 +136,7 @@ class JKernel(Kernel):
                      }
                      self.send_response(self.iopub_socket,'display_data',content)
 
+                  # Other output (plot)
                   else:
 
                      # Generate HTML file name
@@ -162,9 +163,19 @@ class JKernel(Kernel):
                   # Error output
                   content = {
                      'name': 'stdout',
-                      'text': 'JKernel: Internal Error.\n' + str(sys.exc_info()[1]) + '\n'
+                     'text': 'JKernel: Internal Error.\n' + str(sys.exc_info()[1]) + '\n'
                   }
                   self.send_response(self.iopub_socket,'stream',content)
+                  
+            # Is it an html output
+            elif output.startswith('<html>'):
+
+               content = {
+                  'source':   'J',
+                  'metadata': { },
+                  'data':     {'text/html': output}
+               }
+               self.send_response(self.iopub_socket,'display_data',content)
 
             else:
                # Normal text output
